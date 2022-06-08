@@ -1,0 +1,207 @@
+       	 +-------------------------+
+		     |		   EE 415	           |
+		     | PROJECT 4: FILE SYSTEMS |
+		     |	   DESIGN DOCUMENT     |
+		     +-------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+20214926 HINRICHS JEPPE
+20214943 MAO YIFAN
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+		     INDEXED AND EXTENSIBLE FILES
+		     ============================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+struct inode 
+{
+    struct list_elem elem;      
+    block_sector_t sector;          
+    int open_count;                       
+    bool removed;                   
+    bool write_deny_count;                //flag for write_deny 
+    struct lock lock_extend;             //lock for extend
+};
+
+>> A2: What is the maximum size of a file supported by your inode
+>> structure?  Show your work.
+We define direct, indirect and double direct.
+---- SYNCHRONIZATION ----
+
+>> A3: Explain how your code avoids a race if two processes attempt to
+>> extend a file at the same time.
+1) The race can be avoid with a lock.
+2) When two threads are trying to reach one file, only one of them can reach it with a specific offset.
+3) Once one thread reached the file, the other one cannot reach it.
+
+>> A4: Suppose processes A and B both have file F open, both
+>> positioned at end-of-file.  If A reads and B writes F at the same
+>> time, A may read all, part, or none of what B writes.  However, A
+>> may not read data other than what B writes, e.g. if B writes
+>> nonzero data, A is not allowed to see all zeros.  Explain how your
+>> code avoids this race.
+1) A should wait for B until B is finished with writing. And after it, A can read all parts of what B writes.
+2) If A reads the file before B is finished with writing, then A cannot read anything of what B writes.
+
+>> A5: Explain how your synchronization design provides "fairness".
+>> File access is "fair" if readers cannot indefinitely block writers
+>> or vice versa.  That is, many processes reading from a file cannot
+>> prevent forever another process from writing the file, and many
+>> processes writing to a file cannot prevent another process forever
+>> from reading the file.
+1) The reading cannot happen during writing or the writing cannot happen during reading is because sometimes there are condition limitation.
+2) To avoid this, remove all the condition limitation, for example, lock, can be a solution.
+
+---- RATIONALE ----
+
+>> A6: Is your inode structure a multilevel index?  If so, why did you
+>> choose this particular combination of direct, indirect, and doubly
+>> indirect blocks?  If not, why did you choose an alternative inode
+>> structure, and what advantages and disadvantages does your
+>> structure have, compared to a multilevel index?
+1) Multilevel index is chose and they are indirect.
+2) This is easier for different file sizes.
+			    SUBDIRECTORIES
+			    ==============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+uint32_t file_dir;              //whether file or directory
+struct dir *current_dir;         // pointer to current directory
+struct dir_entry_cache{
+    char* path;                      //path for dirrectory
+    block_sector_t inumber;
+    struct hash_elem elem;
+};
+
+---- ALGORITHMS ----
+
+>> B2: Describe your code for traversing a user-specified path.  How
+>> do traversals of absolute and relative paths differ?
+1) Determine the type first, whether is absolute or related.
+2) If it is absolute, we start with root.
+3) If it is relative, we start with current directory.
+4) Search every name between '/' until the end of the path.
+---- SYNCHRONIZATION ----
+
+>> B4: How do you prevent races on directory entries?  For example,
+>> only one of two simultaneous attempts to remove a single file
+>> should succeed, as should only one of two simultaneous attempts to
+>> create a file with the same name, and so on.
+1) The lock can help us solve this problem.
+2) For removing, one thread will hold the lock and remove the file. The other file cannot get the lock and fail to implement removing.
+3) After removing the file, the lock will be released and the other file will get the lock but cannot find the file to remove.
+4) Similar priciple for other cases.
+
+>> B5: Does your implementation allow a directory to be removed if it
+>> is open by a process or if it is in use as a process's current
+>> working directory?  If so, what happens to that process's future
+>> file system operations?  If not, how do you prevent it?
+1) The directory cannot be removed if it is in use.
+2) Check the state to determine whether the directory can be removed or not.
+3) To be more specific, the directory can only be removed if it's state is not used.
+
+---- RATIONALE ----
+
+>> B6: Explain why you chose to represent the current directory of a
+>> process the way you did.
+1) The representation is under the structure thread.
+2) It's more straightforward.
+			     BUFFER CACHE
+			     ============
+
+---- DATA STRUCTURES ----
+
+>> C1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+struct buffer_cache{
+    block_sector_t sector;   
+    bool dirty;                         //dirty flag
+    bool access;                        //access flag
+    bool occupy;                        //use flag
+    void* buffer_cache_pos;             //virtual address of buffer cache
+    struct list_elem elem;
+};
+---- ALGORITHMS ----
+
+>> C2: Describe how your cache replacement algorithm chooses a cache
+>> block to evict.
+1) The idea of clock is used to evict.
+2) The dirty and access flags are used.
+3) The state will be check so the file can be accessed by only one thread.
+
+>> C3: Describe your implementation of write-behind.
+1) Check whether the file is occupied or not.
+2) Wait the file to be updated first.
+3) Operate write until the former operation is done.
+
+>> C4: Describe your implementation of read-ahead.
+1) Get the lock first.
+2) The read operation is done before the thread is awake.
+
+---- SYNCHRONIZATION ----
+
+>> C5: When one process is actively reading or writing data in a
+>> buffer cache block, how are other processes prevented from evicting
+>> that block?
+1) The lock can be a way to prevent other processes interrupt.
+2) However, there are many areas so we count them.
+3) The idea is similar to semaphore, the process can entry when the count is 0.
+
+>> C6: During the eviction of a block from the cache, how are other
+>> processes prevented from attempting to access the block?
+1) In this case, although the processes are not allowed to access block, they can enter buffer cache.
+2) So no lock for buffer cache entries.
+3) Similarly, we count the threads.
+4) like the idea of semaphore, the process can access when the count is 0;
+
+---- RATIONALE ----
+
+>> C7: Describe a file workload likely to benefit from buffer caching,
+>> and workloads likely to benefit from read-ahead and write-behind.
+1) As for buffer caching, the read operation and write operation can be more fast.
+2) The reason is instead of reaching memory, which is far away and slow, the operation is done in buffer cache, which is closer and fast.
+3) As for read-ahead, the benefit is we may use the same file frequently, in this case, it saves time.
+4) As for write_behind, the benefit is we may use many files at the same time but not modify them a lot.
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students in future quarters?
+
+>> Any other comments?
